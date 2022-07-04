@@ -6,12 +6,13 @@ import qualified OddJobs.Endpoints as OddJobs
 import Servant
 import Servant.API.Generic
 import Servant.HTML.Lucid
+import Data.Text (Text)
 
 type Routes = NamedRoutes Routes'
 
 data Routes' mode = Routes'
   { index :: mode :- Get '[HTML] (Html ())
-  , makeReadmes :: mode :- "readmes" :> Post '[HTML] (Html ())
+  , makeReadmes :: mode :- "readmes" :> Post '[HTML] (Headers '[Header "Location" Text] NoContent)
   , oddJobs :: mode :- "odd-jobs" :> OddJobs.FinalAPI -- they compose :o
   , users :: mode :- "users" :> AdminUsersRoutes
   , packages :: mode :- "packages" :> PackagesAdminRoutes

@@ -88,7 +88,7 @@ data ReadmePayload = MkReadmePayload
 -- these represent the possible odd jobs we can run.
 data FloraOddJobs
   = MkReadme ReadmePayload
-  | DoNothing -- needed to keep this type tagged
+  | ImportHackageIndex
   deriving stock (Generic)
   deriving anyclass (ToJSON, FromJSON)
 

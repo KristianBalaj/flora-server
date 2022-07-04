@@ -1,6 +1,7 @@
 -- | Represents the various jobs that can be run
 module Flora.OddJobs
   ( scheduleReadmeJob
+  , scheduleIndexImportJob
   , jobTableName
   , runner
 
@@ -28,10 +29,11 @@ import GHC.Stack
 import Log
 import qualified Lucid
 import Network.HTTP.Types (notFound404)
-import OddJobs.Job (Job (..), createJob)
+import OddJobs.Job (Job (..), createJob, scheduleJob)
 import Optics.Core
 import Servant.Client (ClientError (..))
 import Servant.Client.Core (ResponseF (..))
+import qualified System.Process.Typed as System
 
 import Flora.Model.Package
 import Flora.Model.Release.Types
@@ -39,14 +41,44 @@ import Flora.Model.Release.Update (updateReadme)
 import Flora.OddJobs.Types
 import Flora.ThirdParties.Hackage.API (VersionedPackage (..))
 import qualified Flora.ThirdParties.Hackage.Client as Hackage
+import qualified Data.Time as Time
+import Data.Time (nominalDay)
+import Control.Monad (void)
 
 scheduleReadmeJob :: Pool PG.Connection -> ReleaseId -> PackageName -> Version -> IO Job
-scheduleReadmeJob conn rid package version =
-  withResource conn $ \res ->
+scheduleReadmeJob pool rid package version =
+  withResource pool $ \conn ->
     createJob
-      res
+      conn
       jobTableName
       (MkReadme $ MkReadmePayload package rid $ MkIntAesonVersion version)
+
+scheduleIndexImportJob :: Pool PG.Connection -> IO Job
+scheduleIndexImportJob pool = withResource pool $ \conn -> do
+  t <- Time.getCurrentTime
+  let runAt = Time.addUTCTime nominalDay t
+  scheduleJob
+    conn
+    jobTableName
+    ()
+    runAt
+
+runner :: Pool PG.Connection -> Job -> JobsRunnerM ()
+runner pool job = localDomain "job-runner" $
+  case fromJSON (jobPayload job) of
+    Error str -> logAttention "decode error" str
+    Success val -> case val of
+      MkReadme x -> makeReadme pool x
+      ImportHackageIndex -> fetchNewIndex pool
+
+fetchNewIndex :: Pool PG.Connection -> JobsRunnerM ()
+fetchNewIndex pool = localDomain "index-import" $ do
+  logInfo_ "Fetching new index"
+  System.runProcess_ "cabal update"
+  System.runProcess_ "~/.cabal/packages/hackage.haskell.org/01-index.tar 01-index/"
+  System.runProcess_ "cd 01-index && tar -xf 01-index.tar"
+  System.runProcess_ "make import-from-hackage" 
+  void $ liftIO $ scheduleIndexImportJob pool
 
 makeReadme :: HasCallStack => Pool PG.Connection -> ReadmePayload -> JobsRunnerM ()
 makeReadme pool pay@MkReadmePayload{..} = localDomain ("for-package " <> display mpPackage) $ do
@@ -75,11 +107,3 @@ makeReadme pool pay@MkReadmePayload{..} = localDomain ("for-package " <> display
           readmeBody = Lucid.toHtmlRaw @Text $ TL.toStrict htmlTxt
 
       liftIO $ withPool pool $ updateReadme mpReleaseId (Just $ MkTextHtml readmeBody)
-
-runner :: Pool PG.Connection -> Job -> JobsRunnerM ()
-runner pool job = localDomain "job-runner" $
-  case fromJSON (jobPayload job) of
-    Error str -> logAttention "decode error" str
-    Success val -> case val of
-      DoNothing -> logInfo "doing nothing" ()
-      MkReadme x -> makeReadme pool x

@@ -26,6 +26,9 @@ import FloraWeb.Types (fetchFloraEnv)
 import Log.Class
 import qualified OddJobs.Endpoints as OddJobs
 import qualified OddJobs.Types as OddJobs
+import qualified Log
+import FloraWeb.Server.Utils (redirect)
+import Data.Text (Text)
 
 server :: OddJobs.UIConfig -> OddJobs.Env -> ServerT Routes FloraPageM
 server cfg env =
@@ -69,20 +72,20 @@ indexHandler = do
   report <- liftIO $ withPool pool getReport
   render templateEnv (Templates.index report)
 
-makeReadmesHandler :: FloraAdminM (Html ())
+makeReadmesHandler :: FloraAdminM (Headers '[Header "Location" Text] NoContent)
 makeReadmesHandler = localDomain "makeReadmesHandler" $ do
-  logInfo "opening the readmes magic" ("" :: String)
+  Log.logInfo_ "opening the readmes magic"
   session <- getSession
   FloraEnv{pool} <- liftIO $ fetchFloraEnv (session ^. #webEnvStore)
 
-  logInfo "scheduling readme jabbb" ("" :: String)
+  Log.logInfo_ "Scheduling README job"
   releases <- liftIO $ withPool pool getPackageReleases
-  logInfo "got releases! qeueing the queue" ("" :: String)
+  Log.logInfo_ "Got releases! qeueing the queue"
   forM_ releases $ \(releaseId, version, packagename) -> do
     liftIO $ scheduleReadmeJob pool releaseId packagename version
 
-  logInfo "done" ("exceptional" :: String)
-  throwError $ err301{errHeaders = [("Location", "/admin")]}
+  Log.logInfo_ "Done"
+  pure $ redirect "/admin"
 
 adminUsersHandler :: ServerT AdminUsersRoutes FloraAdminM
 adminUsersHandler =
@@ -130,19 +133,3 @@ packageIndexHandler = do
   packages <- liftIO $ withPool pool Query.getAllPackages
   templateEnv <- fromSession session defaultTemplateEnv
   render templateEnv (Templates.indexPackages packages)
-
--- withPackageHandler ::  -> ServerT WithPackageAdminRoutes FloraAdminM
--- withPackageHandler packageId = WithPackageAdminRoutes'
---   { showPackage = showPackageHandler packageId
---   }
-
--- showPackageHandler :: PackageId -> FloraAdminM (Html ())
--- showPackageHandler packageId = do
---   session <- getSession
---   FloraEnv{pool} <- liftIO $ fetchFloraEnv (session ^. #webEnvStore)
---   result <- liftIO $ withPool pool $ Query.getPackageById packageId
---   templateEnv <- fromSession session defaultTemplateEnv
---   case result of
---     Nothing -> renderError templateEnv notFound404
---     Just package -> do
---       render templateEnv (Templates.showPackage package)
