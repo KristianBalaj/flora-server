@@ -1,9 +1,11 @@
+{-# LANGUAGE QuasiQuotes #-}
 -- | Represents the various jobs that can be run
 module Flora.OddJobs
   ( scheduleReadmeJob
   , scheduleIndexImportJob
   , jobTableName
   , runner
+  , checkIfIndexImportJobIsNotRunning 
 
     -- * exposed for testing
 
@@ -44,6 +46,9 @@ import qualified Flora.ThirdParties.Hackage.Client as Hackage
 import qualified Data.Time as Time
 import Data.Time (nominalDay)
 import Control.Monad (void)
+import Database.PostgreSQL.Transact (DBT)
+import Database.PostgreSQL.Simple.SqlQQ (sql)
+import Database.PostgreSQL.Simple (Only (..))
 
 scheduleReadmeJob :: Pool PG.Connection -> ReleaseId -> PackageName -> Version -> IO Job
 scheduleReadmeJob pool rid package version =
@@ -62,6 +67,21 @@ scheduleIndexImportJob pool = withResource pool $ \conn -> do
     jobTableName
     ()
     runAt
+
+checkIfIndexImportJobIsNotRunning :: (MonadIO m) => DBT m Bool
+checkIfIndexImportJobIsNotRunning = do
+  (result :: Maybe (Only Int)) <- queryOne_ Select [sql|
+              select count(*)
+              from "oddjobs"
+              where payload ->> 'tag' = 'ImportHackageIndex'
+      |]
+  case result of
+    Nothing -> pure True
+    Just (Only 0)  -> pure True
+    Just (Only 1)  -> pure True
+    _       -> pure False
+
+
 
 runner :: Pool PG.Connection -> Job -> JobsRunnerM ()
 runner pool job = localDomain "job-runner" $

@@ -59,6 +59,8 @@ import qualified Network.HTTP.Client as HTTP
 import qualified OddJobs.Endpoints as OddJobs
 import OddJobs.Job (startJobRunner)
 import qualified OddJobs.Types as OddJobs
+import Database.PostgreSQL.Entity.DBT (withPool)
+import Flora.OddJobs (checkIfIndexImportJobIsNotRunning, scheduleIndexImportJob)
 
 runFlora :: IO ()
 runFlora = bracket getFloraEnv shutdownFlora $ \env -> do
@@ -70,7 +72,14 @@ runFlora = bracket getFloraEnv shutdownFlora $ \env -> do
     void $ Prometheus.register ghcMetrics
     void $ Prometheus.register procMetrics
   let withLogger = Logging.makeLogger (env ^. #logging ^. #logger)
-  withLogger $ \appLogger ->
+  withLogger $ \appLogger -> do
+    Log.runLogT "flora" appLogger defaultLogLevel $ do
+      let pool = env ^. #pool
+      indexImportJobIsNotRunning <- withPool pool checkIfIndexImportJobIsNotRunning
+      when indexImportJobIsNotRunning $ do
+        Log.logInfo_ "Scheduling the index import job"
+        liftIO $ void $ scheduleIndexImportJob pool
+
     runServer appLogger env
 
 shutdownFlora :: FloraEnv -> IO ()
@@ -84,7 +93,7 @@ logException env logger exception =
 runServer :: Logger -> FloraEnv -> IO ()
 runServer appLogger floraEnv = do
   httpManager <- HTTP.newManager tlsManagerSettings
-  jobRunnerPool <-
+  jobRunnerPool <- 
     Pool.newPool $
       Pool.PoolConfig
         { createResource = PG.connect (floraEnv ^. #config % #connectInfo)
