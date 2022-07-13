@@ -1,11 +1,12 @@
 {-# LANGUAGE QuasiQuotes #-}
+
 -- | Represents the various jobs that can be run
 module Flora.OddJobs
   ( scheduleReadmeJob
   , scheduleIndexImportJob
   , jobTableName
   , runner
-  , checkIfIndexImportJobIsNotRunning 
+  , checkIfIndexImportJobIsNotRunning
 
     -- * exposed for testing
 
@@ -37,18 +38,18 @@ import Servant.Client (ClientError (..))
 import Servant.Client.Core (ResponseF (..))
 import qualified System.Process.Typed as System
 
+import Control.Monad (void)
+import Data.Time (nominalDay)
+import qualified Data.Time as Time
+import Database.PostgreSQL.Simple (Only (..))
+import Database.PostgreSQL.Simple.SqlQQ (sql)
+import Database.PostgreSQL.Transact (DBT)
 import Flora.Model.Package
 import Flora.Model.Release.Types
 import Flora.Model.Release.Update (updateReadme)
 import Flora.OddJobs.Types
 import Flora.ThirdParties.Hackage.API (VersionedPackage (..))
 import qualified Flora.ThirdParties.Hackage.Client as Hackage
-import qualified Data.Time as Time
-import Data.Time (nominalDay)
-import Control.Monad (void)
-import Database.PostgreSQL.Transact (DBT)
-import Database.PostgreSQL.Simple.SqlQQ (sql)
-import Database.PostgreSQL.Simple (Only (..))
 
 scheduleReadmeJob :: Pool PG.Connection -> ReleaseId -> PackageName -> Version -> IO Job
 scheduleReadmeJob pool rid package version =
@@ -70,18 +71,19 @@ scheduleIndexImportJob pool = withResource pool $ \conn -> do
 
 checkIfIndexImportJobIsNotRunning :: (MonadIO m) => DBT m Bool
 checkIfIndexImportJobIsNotRunning = do
-  (result :: Maybe (Only Int)) <- queryOne_ Select [sql|
+  (result :: Maybe (Only Int)) <-
+    queryOne_
+      Select
+      [sql|
               select count(*)
               from "oddjobs"
               where payload ->> 'tag' = 'ImportHackageIndex'
       |]
   case result of
     Nothing -> pure True
-    Just (Only 0)  -> pure True
-    Just (Only 1)  -> pure True
-    _       -> pure False
-
-
+    Just (Only 0) -> pure True
+    Just (Only 1) -> pure True
+    _ -> pure False
 
 runner :: Pool PG.Connection -> Job -> JobsRunnerM ()
 runner pool job = localDomain "job-runner" $
@@ -97,7 +99,7 @@ fetchNewIndex pool = localDomain "index-import" $ do
   System.runProcess_ "cabal update"
   System.runProcess_ "~/.cabal/packages/hackage.haskell.org/01-index.tar 01-index/"
   System.runProcess_ "cd 01-index && tar -xf 01-index.tar"
-  System.runProcess_ "make import-from-hackage" 
+  System.runProcess_ "make import-from-hackage"
   void $ liftIO $ scheduleIndexImportJob pool
 
 makeReadme :: HasCallStack => Pool PG.Connection -> ReadmePayload -> JobsRunnerM ()

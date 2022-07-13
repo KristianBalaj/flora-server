@@ -7,6 +7,7 @@ import Network.HTTP.Types.Status (notFound404)
 import Optics.Core
 import Servant
 
+import Data.Text (Text)
 import Flora.Environment
 import Flora.Model.Admin.Report
 import qualified Flora.Model.Package.Query as Query
@@ -16,6 +17,7 @@ import qualified Flora.Model.User.Query as Query
 import Flora.OddJobs
 import FloraWeb.Routes.Pages.Admin
 import FloraWeb.Server.Auth
+import FloraWeb.Server.Utils (redirect)
 import FloraWeb.Session (getSession)
 import FloraWeb.Templates
 import qualified FloraWeb.Templates.Admin as Templates
@@ -23,12 +25,10 @@ import qualified FloraWeb.Templates.Admin.Packages as Templates
 import qualified FloraWeb.Templates.Admin.Users as Templates
 import FloraWeb.Templates.Error
 import FloraWeb.Types (fetchFloraEnv)
+import qualified Log
 import Log.Class
 import qualified OddJobs.Endpoints as OddJobs
 import qualified OddJobs.Types as OddJobs
-import qualified Log
-import FloraWeb.Server.Utils (redirect)
-import Data.Text (Text)
 
 server :: OddJobs.UIConfig -> OddJobs.Env -> ServerT Routes FloraPageM
 server cfg env =

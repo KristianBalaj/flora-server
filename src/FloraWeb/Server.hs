@@ -39,10 +39,12 @@ import Servant.Server.Generic (AsServerT, genericServeTWithContext)
 
 import Control.Concurrent
 import qualified Control.Exception.Safe as Safe
+import Database.PostgreSQL.Entity.DBT (withPool)
 import qualified Database.PostgreSQL.Simple as PG
 import Flora.Environment (DeploymentEnv, FloraEnv (..), LoggingEnv (..), getFloraEnv)
 import Flora.Environment.Config (FloraConfig (..))
 import qualified Flora.Environment.OddJobs as OddJobs
+import Flora.OddJobs (checkIfIndexImportJobIsNotRunning, scheduleIndexImportJob)
 import qualified Flora.OddJobs as OddJobs
 import Flora.OddJobs.Types (JobsRunnerEnv (..))
 import FloraWeb.Autoreload (AutoreloadRoute)
@@ -59,8 +61,6 @@ import qualified Network.HTTP.Client as HTTP
 import qualified OddJobs.Endpoints as OddJobs
 import OddJobs.Job (startJobRunner)
 import qualified OddJobs.Types as OddJobs
-import Database.PostgreSQL.Entity.DBT (withPool)
-import Flora.OddJobs (checkIfIndexImportJobIsNotRunning, scheduleIndexImportJob)
 
 runFlora :: IO ()
 runFlora = bracket getFloraEnv shutdownFlora $ \env -> do
@@ -93,7 +93,7 @@ logException env logger exception =
 runServer :: Logger -> FloraEnv -> IO ()
 runServer appLogger floraEnv = do
   httpManager <- HTTP.newManager tlsManagerSettings
-  jobRunnerPool <- 
+  jobRunnerPool <-
     Pool.newPool $
       Pool.PoolConfig
         { createResource = PG.connect (floraEnv ^. #config % #connectInfo)

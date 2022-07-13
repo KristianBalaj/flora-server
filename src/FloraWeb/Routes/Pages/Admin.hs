@@ -1,12 +1,12 @@
 module FloraWeb.Routes.Pages.Admin where
 
+import Data.Text (Text)
 import Flora.Model.User
 import Lucid
 import qualified OddJobs.Endpoints as OddJobs
 import Servant
 import Servant.API.Generic
 import Servant.HTML.Lucid
-import Data.Text (Text)
 
 type Routes = NamedRoutes Routes'
 
